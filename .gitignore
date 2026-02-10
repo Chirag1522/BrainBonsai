@@ -24,3 +24,17 @@ DEPLOYMENT.md
 
 # Helpers
 notify.py
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Database
+*.db
+*.sqlite3
+
+# OS
+.DS_Store

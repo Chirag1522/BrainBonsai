@@ -3,8 +3,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from perplexity import Perplexity
 from dotenv import load_dotenv
+
 from sqlalchemy.orm import Session
 import logging
 import os
@@ -12,9 +12,24 @@ import json
 from datetime import datetime, timezone
 from typing import Optional
 
-load_dotenv()
+
+from groq import Groq
+import os
+from dotenv import load_dotenv # Add this
+load_dotenv()                # And this
+
+# Now your existing code will work!
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+
+
+
+
 app = FastAPI()
 logger = logging.getLogger(__name__)
+
+
+print("GROQ API KEY LOADED:", bool(os.getenv("GROQ_API_KEY")))
 
 
 def _db_unavailable_error() -> HTTPException:
@@ -89,117 +104,166 @@ class DeleteGameStateRequest(BaseModel):
 
 class GenerateQuizRequest(BaseModel):
     flashcards: list
-
 @app.post("/api/search")
 async def search(request: SearchRequest):
     try:
-        client = Perplexity()
-        
-        # Define the JSON schema for structured output
-        schema = {
-            "type": "object",
-            "properties": {
-                "areas": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "description": {"type": "string"},
-                            "search_query": {"type": "string"}
-                        },
-                        "required": ["name", "description", "search_query"]
-                    },
-                    "minItems": 5,
-                    "maxItems": 5
-                }
-            },
-            "required": ["areas"]
+        prompt = f"""
+        You are an educational AI.
+
+        Generate EXACTLY 5 distinct knowledge areas for:
+        "{request.query}"
+
+        Return ONLY valid JSON in the following format:
+        {{
+          "areas": [
+            {{
+              "name": "Area name",
+              "description": "Short explanation",
+              "search_query": "Search query for deeper study"
+            }}
+          ]
+        }}
+
+        Rules:
+        - Exactly 5 items in areas
+        - No markdown
+        - No explanations outside JSON
+        """
+
+        response = groq_client.chat.completions.create(
+             model="llama-3.1-8b-instant",
+             messages=[
+        {
+            "role": "user",
+            "content": prompt
         }
-        
-        # Use structured outputs to get exactly 5 areas with descriptions
-        completion = client.chat.completions.create(
-            model="sonar-pro",
-            messages=[
-                {"role": "user", "content": f"What are the primary 5 areas in {request.query}? Please provide exactly 5 distinct areas, each with a brief description and a relevant search query for further research. Return the data as a JSON object with the following structure: areas array with 5 objects, each containing name, description, and search_query fields."}
-            ],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {"schema": schema}
-            }
-        )
-        
-        # Parse the structured JSON response
-        response_content = completion.choices[0].message.content
+    ],
+    temperature=0.5
+         )
+
+        raw_text = response.choices[0].message.content
+
+
+
+        print("\n========== GEMINI RAW RESPONSE ==========")
+        print(raw_text)
+        print("========== END RESPONSE ==========\n")
+
+        structured_data = None
+
+        # Try to extract JSON safely
         try:
-            structured_data = json.loads(response_content)
-        except json.JSONDecodeError as e:
-            # Fallback to generic results
+            start = raw_text.find("{")
+            end = raw_text.rfind("}") + 1
+            if start != -1 and end != -1:
+                structured_data = json.loads(raw_text[start:end])
+        except Exception:
             structured_data = None
-        
-        # Create results from structured data
+
+        # 🚑 Fallback if Gemini response is invalid
+        if not structured_data or "areas" not in structured_data:
+            structured_data = {
+                "areas": [
+                    {
+                        "name": f"{request.query} – Concept {i+1}",
+                        "description": f"An important concept related to {request.query}.",
+                        "search_query": request.query
+                    }
+                    for i in range(5)
+                ]
+            }
+
         results = []
-        if structured_data and "areas" in structured_data:
-            for i, area in enumerate(structured_data["areas"]):
-                results.append({
-                    "id": i,
-                    "title": area["name"],
-                    "url": f"https://example.com/{request.query.replace(' ', '-')}-{area['name'].lower().replace(' ', '-').replace('(', '').replace(')', '')}",
-                    "date": "2024-01-01",
-                    "snippet": area["description"],
-                    "llm_content": f"**{area['name']}**\n\n{area['description']}"
-                })
-        else:
-            # Fallback to generic results
-            for i in range(5):
-                results.append({
-                    "id": i,
-                    "title": f"{request.query} - Area {i+1}",
-                    "url": f"https://example.com/{request.query.replace(' ', '-')}-area-{i+1}",
-                    "date": "2024-01-01",
-                    "snippet": f"Primary area {i+1} in {request.query}",
-                    "llm_content": response_content
-                })
-        
-        return {"query": request.query, "results": results, "structured_data": structured_data}
+        for i, area in enumerate(structured_data["areas"]):
+            results.append({
+                "id": i,
+                "title": area["name"],
+                "url": f"https://example.com/{request.query.replace(' ', '-')}-{area['name'].lower().replace(' ', '-')}",
+                "date": "2024-01-01",
+                "snippet": area["description"],
+                "llm_content": f"{area['name']}\n\n{area['description']}"
+            })
+
+        return {
+            "query": request.query,
+            "results": results,
+            "structured_data": structured_data
+        }
+
     except Exception as e:
-        return {"error": str(e), "query": request.query}
+        print("SEARCH ERROR:", str(e))
+        return {
+            "error": str(e),
+            "query": request.query
+        }
 
 @app.post("/api/web-search")
 def web_search(request: WebSearchRequest):
     try:
-        client = Perplexity()
-
-        # Construct query with negative prompts if provided
-        query = request.query
+        negative_text = ""
         if request.negative_prompts:
-            # Add negative prompts to exclude existing results
-            negative_terms = ", ".join([f'"{prompt}"' for prompt in request.negative_prompts])
-            query = f"{request.query} -{negative_terms}"
+            negative_text = (
+                "Avoid generating content related to these topics:\n"
+                + ", ".join(request.negative_prompts)
+            )
 
-        # Use basic search that works (images not supported in this SDK version)
-        search = client.search.create(
-            query=query,
-            max_results=request.count,
-            max_tokens_per_page=1024
+        prompt = f"""
+        Generate {request.count} NEW and DISTINCT insights about:
+        "{request.query}"
+
+        {negative_text}
+
+        Return ONLY valid JSON in this format:
+        {{
+          "results": [
+            {{
+              "title": "Insight title",
+              "snippet": "Short explanation of the insight"
+            }}
+          ]
+        }}
+
+        Rules:
+        - Do NOT repeat avoided topics
+        - No markdown
+        - No explanations outside JSON
+        """
+
+        # ✅ GROQ CALL (REPLACEMENT)
+        response = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.4
         )
-        
-        # Format results to match the expected structure
+
+        raw_text = response.choices[0].message.content.strip()
+
+        # Extract JSON safely
+        start = raw_text.find("{")
+        end = raw_text.rfind("}") + 1
+        json_text = raw_text[start:end]
+
+        data = json.loads(json_text)
+
         results = []
-        for i, result in enumerate(search.results):
+        for i, item in enumerate(data["results"]):
             results.append({
                 "id": i,
-                "title": result.title,
-                "url": result.url,
-                "date": "2024-01-01",  # Perplexity search doesn't provide dates
-                "snippet": result.snippet if hasattr(result, 'snippet') else "No description available",
-                "llm_content": result.snippet if hasattr(result, 'snippet') else "No description available",
-                "images": []  # Images not supported in this SDK version
+                "title": item["title"],
+                "url": f"https://example.com/{item['title'].lower().replace(' ', '-')}",
+                "date": "2024-01-01",
+                "snippet": item["snippet"],
+                "llm_content": item["snippet"],
+                "images": []
             })
-        
+
         return {"query": request.query, "results": results}
+
     except Exception as e:
         return {"error": str(e), "query": request.query}
+
 
 @app.post("/api/save-game-state")
 async def save_game_state(request: SaveGameStateRequest, db: Session = Depends(get_db)):
@@ -488,7 +552,6 @@ async def get_game_sessions(db: Session = Depends(get_db)):
         return {"error": str(e), "success": False}
 
 # Removed extra endpoint - using existing /api/create-flashcards endpoint
-
 @app.post("/api/create-flashcards")
 async def create_flashcards(request: CreateFlashcardsRequest):
     db_session: Optional[Session] = None
@@ -500,7 +563,6 @@ async def create_flashcards(request: CreateFlashcardsRequest):
                 raise _db_unavailable_error()
             
             db_session = SessionLocal()
-            # Database branch approach
             branch = db_session.query(Branch).filter(Branch.id == request.branch_id).first()
             if not branch:
                 raise HTTPException(status_code=404, detail="Branch not found")
@@ -514,87 +576,68 @@ async def create_flashcards(request: CreateFlashcardsRequest):
                 "snippet": branch.search_result.snippet
             }
         elif request.search_result:
-            # Frontend data approach
             search_result_data = request.search_result
         else:
             raise HTTPException(status_code=400, detail="Either branch_id or search_result must be provided")
-        
-        # Use Perplexity to generate flashcards from the search result content
-        client = Perplexity()
-        
-        # Create a prompt to generate flashcards
+
+        # ---------- GROQ FLASHCARD GENERATION ----------
         flashcard_prompt = f"""
-        Based on the following content about "{search_result_data.get('title', 'Unknown Topic')}", create exactly {request.count} flashcards.
-        Each flashcard should have a clear question on the front and a detailed, well-written answer on the back.
-        Vary the answer length appropriately - simple concepts can have shorter answers (100-150 chars), while complex topics may need longer explanations (200-400 chars).
-        
-        IMPORTANT: Use normal sentence casing:
-        - Capitalize only the first letter of each sentence
-        - Capitalize proper nouns (names, places, organizations, etc.)
-        - Use lowercase for common nouns and adjectives
-        - Do NOT use all capital letters
-        - End sentences with proper punctuation
-        - Write in complete, grammatically correct sentences
-        
-        Focus on key concepts, definitions, and important facts.
-        
-        Content: {search_result_data.get('llm_content', search_result_data.get('snippet', ''))}
-        
-        Return the flashcards as a JSON array with this structure:
+        You are an educational AI.
+
+        Based on the following content about "{search_result_data.get('title', 'Unknown Topic')}",
+        create exactly {request.count} flashcards.
+
+        Each flashcard must include:
+        - front: a clear question or term
+        - back: a detailed explanation (100–400 characters)
+        - difficulty: easy, medium, or hard
+
+        Writing rules:
+        - Normal sentence casing
+        - Capitalize proper nouns only
+        - Complete grammatical sentences
+        - No all-caps
+        - End sentences properly
+
+        Content:
+        {search_result_data.get('llm_content', search_result_data.get('snippet', ''))}
+
+        Return ONLY valid JSON in this format:
         [
-            {{
-                "front": "Question or term",
-                "back": "Properly capitalized answer with correct grammar",
-                "difficulty": "easy|medium|hard"
-            }}
+          {{
+            "front": "Question or term",
+            "back": "Well-written explanation",
+            "difficulty": "easy|medium|hard"
+          }}
         ]
         """
-        
-        # Define JSON schema for structured output
-        schema = {
-            "type": "object",
-            "properties": {
-                "flashcards": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "front": {"type": "string"},
-                            "back": {"type": "string"},
-                            "difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]}
-                        },
-                        "required": ["front", "back", "difficulty"]
-                    },
-                    "minItems": request.count,
-                    "maxItems": request.count
-                }
-            },
-            "required": ["flashcards"]
-        }
-        
-        completion = client.chat.completions.create(
-            model="sonar-pro",
+
+        # ✅ GROQ CALL
+        response = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
             messages=[
                 {"role": "user", "content": flashcard_prompt}
             ],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {"schema": schema}
-            }
+            temperature=0.4
         )
-        
-        # Parse the structured JSON response
-        response_content = completion.choices[0].message.content
+
+        raw_text = response.choices[0].message.content.strip()
+
+        # Safely extract JSON array
+        start = raw_text.find("[")
+        end = raw_text.rfind("]") + 1
+        json_text = raw_text[start:end]
+
         try:
-            structured_data = json.loads(response_content)
-        except json.JSONDecodeError as e:
+            structured_flashcards = json.loads(json_text)
+        except json.JSONDecodeError:
             raise HTTPException(status_code=500, detail="Failed to parse flashcard data")
-        
-        # Create flashcards
+
+        # ---------- CREATE FLASHCARDS ----------
         created_flashcards = []
-        for flashcard_data in structured_data.get("flashcards", []):
+
+        for flashcard_data in structured_flashcards:
             if request.branch_id:
-                # Save to database for database branches
                 flashcard = Flashcard(
                     game_session_id=branch.game_session_id,
                     branch_id=branch.id,
@@ -613,26 +656,24 @@ async def create_flashcards(request: CreateFlashcardsRequest):
                     "category": flashcard.category
                 })
             else:
-                # Return data for frontend (not saved to database yet)
-                # Use search result title for categorization (individual topic, not root topic)
-                category = search_result_data.get('title', 'Unknown Topic')
+                category = search_result_data.get("title", "Unknown Topic")
                 created_flashcards.append({
                     "front": flashcard_data["front"],
                     "back": flashcard_data["back"],
                     "difficulty": flashcard_data["difficulty"],
                     "category": category,
-                    "node_position": request.node_position  # Include node position for linking
+                    "node_position": request.node_position
                 })
-        
+
         if request.branch_id and db_session:
             db_session.commit()
-        
+
         return {
             "success": True,
             "flashcards": created_flashcards,
             "message": f"Created {len(created_flashcards)} flashcards for {search_result_data.get('title', 'Unknown Topic')}"
         }
-        
+
     except HTTPException as exc:
         if db_session:
             db_session.rollback()
@@ -644,6 +685,8 @@ async def create_flashcards(request: CreateFlashcardsRequest):
     finally:
         if db_session:
             db_session.close()
+
+
 
 @app.get("/api/flashcards/{branch_id}")
 async def get_flashcards(branch_id: int, db: Session = Depends(get_db)):
@@ -693,101 +736,84 @@ async def delete_game_state(request: DeleteGameStateRequest, db: Session = Depen
     except Exception as e:
         db.rollback()
         return {"error": str(e), "success": False}
-
 @app.post("/api/generate-quiz")
 async def generate_quiz(request: GenerateQuizRequest):
     try:
-        client = Perplexity()
-        
-        # Create a prompt to generate quiz questions from flashcards
-        flashcard_data = "\n".join([f"Q: {card.get('front', '')}\nA: {card.get('back', '')}" for card in request.flashcards])
-        
+        # Prepare flashcard content
+        flashcard_data = "\n".join([
+            f"Q: {card.get('front', '')}\nA: {card.get('back', '')}"
+            for card in request.flashcards
+        ])
+
         quiz_prompt = f"""
-        Based on these flashcards, create 5 challenging multiple choice quiz questions that test understanding rather than memorization.
-        
+        You are an educational AI.
+
+        Based on the flashcards below, generate EXACTLY 5 challenging
+        multiple-choice questions that test understanding (not memorization).
+
         Flashcards:
         {flashcard_data}
-        
-        For each question:
-        - Create a NEW question that tests understanding of the concepts, not just the exact flashcard content
-        - Make the correct answer shorter and more concise (50-100 characters)
-        - Create 3 plausible but incorrect alternatives that are also short and concise
-        - Make the questions challenging but fair
-        - Use normal sentence casing (not all caps)
-        
-        Return as JSON array with this structure:
+
+        Rules:
+        - Each question must be new (not copied from flashcards)
+        - Correct answer: 50–100 characters
+        - 3 plausible but incorrect options
+        - Normal sentence casing
+        - No all-caps
+
+        Return ONLY valid JSON in this format:
         [
-            {{
-                "question": "New challenging question",
-                "correctAnswer": "Short correct answer",
-                "options": ["Correct answer", "Wrong option 1", "Wrong option 2", "Wrong option 3"]
-            }}
+          {{
+            "question": "Challenging conceptual question",
+            "correctAnswer": "Concise correct answer",
+            "options": [
+              "Correct answer",
+              "Wrong option 1",
+              "Wrong option 2",
+              "Wrong option 3"
+            ]
+          }}
         ]
         """
-        
-        # Define JSON schema for structured output
-        schema = {
-            "type": "object",
-            "properties": {
-                "questions": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "question": {"type": "string"},
-                            "correctAnswer": {"type": "string"},
-                            "options": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "minItems": 4,
-                                "maxItems": 4
-                            }
-                        },
-                        "required": ["question", "correctAnswer", "options"]
-                    },
-                    "minItems": 5,
-                    "maxItems": 5
-                }
-            },
-            "required": ["questions"]
-        }
-        
-        completion = client.chat.completions.create(
-            model="sonar-pro",
+
+        # ✅ GROQ CALL
+        response = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
             messages=[
                 {"role": "user", "content": quiz_prompt}
             ],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {"schema": schema}
-            }
+            temperature=0.4
         )
-        
-        # Parse the structured JSON response
-        response_content = completion.choices[0].message.content
+
+        raw_text = response.choices[0].message.content.strip()
+
+        # Extract JSON array safely
+        start = raw_text.find("[")
+        end = raw_text.rfind("]") + 1
+        json_text = raw_text[start:end]
+
         try:
-            structured_data = json.loads(response_content)
-        except json.JSONDecodeError as e:
+            questions_data = json.loads(json_text)
+        except json.JSONDecodeError:
             raise HTTPException(status_code=500, detail="Failed to parse quiz data")
-        
-        # Shuffle options for each question
+
+        # Shuffle options
+        import random
         questions = []
-        for question_data in structured_data.get("questions", []):
-            options = question_data["options"]
-            # Shuffle the options
-            import random
+        for q in questions_data:
+            options = q["options"]
             random.shuffle(options)
             questions.append({
-                "question": question_data["question"],
-                "correctAnswer": question_data["correctAnswer"],
+                "question": q["question"],
+                "correctAnswer": q["correctAnswer"],
                 "options": options
             })
-        
+
         return {
             "success": True,
             "questions": questions
         }
-        
+
     except Exception as e:
         return {"error": str(e), "success": False}
 
