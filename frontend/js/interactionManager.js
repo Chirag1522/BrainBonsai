@@ -108,8 +108,17 @@ window.InteractionManager = class InteractionManager {
                 this.game.dragStart = { ...mousePos };
                 break;
             case 'study':
-                if (hoveredNode?.searchResult) {
-                    this.game.showStudyModal(hoveredNode.searchResult);
+                if (hoveredNode) {
+                    const branchEndingHere = this.game.tree?.branches?.find(b =>
+                        Math.abs(b.end.x - hoveredNode.x) < 5 && Math.abs(b.end.y - hoveredNode.y) < 5
+                    );
+                    const quizDone = branchEndingHere && this.game.quizManager &&
+                        this.game.quizManager.isBranchQuizCompleted(branchEndingHere);
+                    if (quizDone) {
+                        this.game.treeManager.growBranchesFromNode(hoveredNode);
+                    } else if (hoveredNode.searchResult) {
+                        this.game.showStudyModal(hoveredNode.searchResult);
+                    }
                 }
                 break;
             default:

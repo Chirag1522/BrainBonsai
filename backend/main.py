@@ -1,9 +1,57 @@
+USERS = {}
+from cryptography.fernet import Fernet
+import base64
+import hashlib
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+from sqlalchemy.orm import relationship
+from datetime import datetime
+
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from eth_account import Account
+
+from sqlalchemy import Column, Integer, String, create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session
+from models import NFTCredential, SessionLocal, User
+
+
+
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from fastapi import Depends
+
+
+from sqlalchemy.orm import Session
+import logging
+import os
+import json
+from datetime import datetime, timezone
+from typing import Optional
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from pydantic import BaseModel
+
+class GoogleTokenRequest(BaseModel):
+    token: str
+#chirag code above
+
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from dotenv import load_dotenv
+from seeds import Web3Seed
+from utils import apply_growth
+from models import Credential
+
+
 
 from sqlalchemy.orm import Session
 import logging
@@ -17,6 +65,41 @@ from groq import Groq
 import os
 from dotenv import load_dotenv # Add this
 load_dotenv()                # And this
+
+
+
+
+
+from web3 import Web3
+
+w3 = Web3(Web3.HTTPProvider(os.getenv("SEPOLIA_RPC_URL")))
+
+NFT_ABI = [
+    {
+        "inputs": [{"internalType":"address","name":"to","type":"address"}],
+        "name":"mint",
+        "outputs":[{"internalType":"uint256","name":"","type":"uint256"}],
+        "stateMutability":"nonpayable",
+        "type":"function"
+    }
+]
+
+nft_contract = w3.eth.contract(
+    address=Web3.to_checksum_address(os.getenv("NFT_CONTRACT_ADDRESS")),
+    abi=NFT_ABI
+)
+
+OWNER_ACCOUNT = w3.eth.account.from_key(
+    os.getenv("NFT_OWNER_PRIVATE_KEY")
+)
+
+
+
+
+
+
+
+
 
 # Now your existing code will work!
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -34,6 +117,56 @@ print("GROQ API KEY LOADED:", bool(os.getenv("GROQ_API_KEY")))
 
 def _db_unavailable_error() -> HTTPException:
     return HTTPException(status_code=503, detail="Saving and loading are temporarily disabled.")
+
+
+#Chirag 
+
+def get_fernet():
+    secret = os.getenv("WALLET_ENCRYPTION_SECRET")
+    key = hashlib.sha256(secret.encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(key))
+
+
+def encrypt_private_key(pk: str) -> str:
+    return get_fernet().encrypt(pk.encode()).decode()
+
+
+def decrypt_private_key(enc: str) -> str:
+    return get_fernet().decrypt(enc.encode()).decode()
+
+
+def verify_google_id_token(token: str) -> dict:
+    try:
+        idinfo = id_token.verify_oauth2_token(
+            token,
+            google_requests.Request(),
+            os.getenv("GOOGLE_CLIENT_ID")
+        )
+
+        return {
+            "google_sub": idinfo["sub"],
+            "email": idinfo.get("email"),
+            "email_verified": idinfo.get("email_verified", False),
+            "name": idinfo.get("name"),
+            "picture": idinfo.get("picture"),
+        }
+
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+
+
+def get_fernet():
+    secret = os.getenv("WALLET_SECRET_KEY")
+    key = hashlib.sha256(secret.encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(key))
+
+def create_wallet():
+    acct = Account.create()
+    return {
+        "address": acct.address,
+        "private_key": acct.key.hex()
+    }
+#till here
 
 DB_AVAILABLE = False
 SessionLocal = None  # Will be set if database initializes successfully
@@ -53,6 +186,7 @@ except Exception as exc:
 
     def get_db():  # type: ignore
         raise _db_unavailable_error()
+
 
 
 # Add CORS middleware
@@ -104,6 +238,10 @@ class DeleteGameStateRequest(BaseModel):
 
 class GenerateQuizRequest(BaseModel):
     flashcards: list
+
+class PlantSeedRequest(BaseModel):
+    seed: Web3Seed
+
 @app.post("/api/search")
 async def search(request: SearchRequest):
     try:
@@ -551,30 +689,31 @@ async def get_game_sessions(db: Session = Depends(get_db)):
     except Exception as e:
         return {"error": str(e), "success": False}
 
-# Removed extra endpoint - using existing /api/create-flashcards endpoint
 @app.post("/api/create-flashcards")
 async def create_flashcards(request: CreateFlashcardsRequest):
     db_session: Optional[Session] = None
     branch = None
+
     try:
         # Handle both database branches and frontend data
         if request.branch_id:
             if not DB_AVAILABLE or SessionLocal is None:
                 raise _db_unavailable_error()
-            
+
             db_session = SessionLocal()
             branch = db_session.query(Branch).filter(Branch.id == request.branch_id).first()
             if not branch:
                 raise HTTPException(status_code=404, detail="Branch not found")
-            
+
             if not branch.search_result:
                 raise HTTPException(status_code=400, detail="Branch has no search result data")
-            
+
             search_result_data = {
                 "title": branch.search_result.title,
                 "llm_content": branch.search_result.llm_content,
                 "snippet": branch.search_result.snippet
             }
+
         elif request.search_result:
             search_result_data = request.search_result
         else:
@@ -582,109 +721,106 @@ async def create_flashcards(request: CreateFlashcardsRequest):
 
         # ---------- GROQ FLASHCARD GENERATION ----------
         flashcard_prompt = f"""
-        You are an educational AI.
+You are an educational AI.
 
-        Based on the following content about "{search_result_data.get('title', 'Unknown Topic')}",
-        create exactly {request.count} flashcards.
+Based on the content below, generate EXACTLY {request.count} flashcards.
 
-        Each flashcard must include:
-        - front: a clear question or term
-        - back: a detailed explanation (100–400 characters)
-        - difficulty: easy, medium, or hard
+Content:
+Title: {search_result_data.get('title', '')}
+Text: {search_result_data.get('llm_content', '')}
 
-        Writing rules:
-        - Normal sentence casing
-        - Capitalize proper nouns only
-        - Complete grammatical sentences
-        - No all-caps
-        - End sentences properly
+Return ONLY valid JSON in this format:
+[
+  {{
+    "front": "Question",
+    "back": "Answer",
+    "difficulty": "easy | medium | hard"
+  }}
+]
 
-        Content:
-        {search_result_data.get('llm_content', search_result_data.get('snippet', ''))}
+Rules:
+- No markdown
+- No explanations
+- JSON array only
+"""
 
-        Return ONLY valid JSON in this format:
-        [
-          {{
-            "front": "Question or term",
-            "back": "Well-written explanation",
-            "difficulty": "easy|medium|hard"
-          }}
-        ]
-        """
 
-        # ✅ GROQ CALL
         response = groq_client.chat.completions.create(
             model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "user", "content": flashcard_prompt}
-            ],
+            messages=[{"role": "user", "content": flashcard_prompt}],
             temperature=0.4
         )
 
         raw_text = response.choices[0].message.content.strip()
-
-        # Safely extract JSON array
         start = raw_text.find("[")
         end = raw_text.rfind("]") + 1
-        json_text = raw_text[start:end]
 
         try:
-            structured_flashcards = json.loads(json_text)
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=500, detail="Failed to parse flashcard data")
+            start = raw_text.find("[")
+            end = raw_text.rfind("]") + 1
+            structured_flashcards = json.loads(raw_text[start:end])
+        except Exception as e:
+           raise HTTPException(
+                status_code=500,
+                detail=f"Flashcard JSON parse failed. Raw response: {raw_text}"
+    )
 
-        # ---------- CREATE FLASHCARDS ----------
+
         created_flashcards = []
 
-        for flashcard_data in structured_flashcards:
+        for card in structured_flashcards:
             if request.branch_id:
                 flashcard = Flashcard(
                     game_session_id=branch.game_session_id,
                     branch_id=branch.id,
-                    front=flashcard_data["front"],
-                    back=flashcard_data["back"],
-                    difficulty=flashcard_data["difficulty"],
+                    front=card["front"],
+                    back=card["back"],
+                    difficulty=card["difficulty"],
                     category=branch.search_result.title,
                     created_at=datetime.now(timezone.utc)
                 )
                 db_session.add(flashcard)
                 created_flashcards.append({
-                    "id": flashcard.id,
                     "front": flashcard.front,
                     "back": flashcard.back,
-                    "difficulty": flashcard.difficulty,
-                    "category": flashcard.category
+                    "difficulty": flashcard.difficulty
                 })
             else:
-                category = search_result_data.get("title", "Unknown Topic")
-                created_flashcards.append({
-                    "front": flashcard_data["front"],
-                    "back": flashcard_data["back"],
-                    "difficulty": flashcard_data["difficulty"],
-                    "category": category,
-                    "node_position": request.node_position
-                })
+                created_flashcards.append(card)
 
-        if request.branch_id and db_session:
+        # 🌱 Growth logic — MUST be inside try
+        if request.branch_id and branch:
+            garden = db_session.query(GameSession).filter(
+                GameSession.id == branch.game_session_id
+            ).first()
+
+            if garden:
+                garden.maturity = apply_growth(garden.maturity, 15)
+                garden.last_growth_at = datetime.now(timezone.utc)
+                if garden.maturity == 100:
+                    garden.credential_earned = True
+                    auto_mint_if_eligible(db_session, garden)
+
+        if db_session:
             db_session.commit()
 
-        return {
-            "success": True,
-            "flashcards": created_flashcards,
-            "message": f"Created {len(created_flashcards)} flashcards for {search_result_data.get('title', 'Unknown Topic')}"
-        }
+        return {"success": True, "flashcards": created_flashcards}
 
-    except HTTPException as exc:
+    except HTTPException:
         if db_session:
             db_session.rollback()
-        raise exc
+        raise
+
     except Exception as e:
         if db_session:
             db_session.rollback()
-        return {"error": str(e), "success": False}
+        return {"success": False, "error": str(e)}
+
     finally:
         if db_session:
             db_session.close()
+
+
 
 
 
@@ -738,8 +874,10 @@ async def delete_game_state(request: DeleteGameStateRequest, db: Session = Depen
         return {"error": str(e), "success": False}
 @app.post("/api/generate-quiz")
 async def generate_quiz(request: GenerateQuizRequest):
+    db_session: Optional[Session] = None
+
     try:
-        # Prepare flashcard content
+        # ---------------- Prepare flashcard content ----------------
         flashcard_data = "\n".join([
             f"Q: {card.get('front', '')}\nA: {card.get('back', '')}"
             for card in request.flashcards
@@ -764,8 +902,8 @@ async def generate_quiz(request: GenerateQuizRequest):
         Return ONLY valid JSON in this format:
         [
           {{
-            "question": "Challenging conceptual question",
-            "correctAnswer": "Concise correct answer",
+            "question": "Conceptual question",
+            "correctAnswer": "Correct answer",
             "options": [
               "Correct answer",
               "Wrong option 1",
@@ -776,28 +914,20 @@ async def generate_quiz(request: GenerateQuizRequest):
         ]
         """
 
-        # ✅ GROQ CALL
+        # ---------------- GROQ CALL ----------------
         response = groq_client.chat.completions.create(
             model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "user", "content": quiz_prompt}
-            ],
+            messages=[{"role": "user", "content": quiz_prompt}],
             temperature=0.4
         )
 
         raw_text = response.choices[0].message.content.strip()
 
-        # Extract JSON array safely
         start = raw_text.find("[")
         end = raw_text.rfind("]") + 1
-        json_text = raw_text[start:end]
+        questions_data = json.loads(raw_text[start:end])
 
-        try:
-            questions_data = json.loads(json_text)
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=500, detail="Failed to parse quiz data")
-
-        # Shuffle options
+        # ---------------- Shuffle options ----------------
         import random
         questions = []
         for q in questions_data:
@@ -809,14 +939,446 @@ async def generate_quiz(request: GenerateQuizRequest):
                 "options": options
             })
 
+        # ---------------- 🌱 Growth Logic ----------------
+        if (
+            DB_AVAILABLE
+            and SessionLocal
+            and request.flashcards
+            and isinstance(request.flashcards[0], dict)
+            and "branch_id" in request.flashcards[0]
+        ):
+            branch_id = request.flashcards[0]["branch_id"]
+
+            db_session = SessionLocal()
+            branch = db_session.query(Branch).filter(Branch.id == branch_id).first()
+
+            if branch:
+                garden = db_session.query(GameSession).filter(
+                    GameSession.id == branch.game_session_id
+                ).first()
+
+                if garden:
+                    garden.maturity = apply_growth(garden.maturity, 25)
+                    garden.last_growth_at = datetime.now(timezone.utc)
+
+                    if garden.maturity == 100:
+                        garden.credential_earned = True
+                        auto_mint_if_eligible(db_session, garden)
+
+                    db_session.commit()
+
+        # ---------------- Return response ----------------
         return {
             "success": True,
             "questions": questions
         }
 
+    except json.JSONDecodeError:
+        return {
+            "success": False,
+            "error": "Failed to parse quiz data from AI response"
+        }
+
     except Exception as e:
-        return {"error": str(e), "success": False}
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+    finally:
+        if db_session:
+            db_session.close()
+
+
+@app.get("/api/garden/{garden_id}")
+async def get_garden(garden_id: int, db: Session = Depends(get_db)):
+    garden = db.query(GameSession).filter(GameSession.id == garden_id).first()
+
+    if not garden:
+        raise HTTPException(status_code=404, detail="Garden not found")
+
+    return {
+        "id": garden.id,
+        "seed": garden.seed_type,
+        "maturity": garden.maturity,
+        "credential_earned": garden.credential_earned,
+        "created_at": garden.created_at.isoformat()
+    }
+
+
+
+@app.post("/api/plant-seed")
+async def plant_seed(
+    request: PlantSeedRequest,
+    db: Session = Depends(get_db)
+):
+    try:
+        garden = GameSession(
+            original_search_query=request.seed.value,
+            seed_type=request.seed.value,
+            maturity=0,
+            credential_earned=False,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
+        )
+
+        db.add(garden)
+        db.commit()
+        db.refresh(garden)
+
+        return {
+            "success": True,
+            "garden": {
+                "id": garden.id,
+                "seed": garden.seed_type,
+                "maturity": garden.maturity,
+                "credential_earned": garden.credential_earned
+            }
+        }
+
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/mint-credential/{garden_id}")
+async def mint_credential(
+    garden_id: int,
+    db: Session = Depends(get_db)
+):
+    # 1. Fetch garden
+    garden = db.query(GameSession).filter(GameSession.id == garden_id).first()
+
+    if not garden:
+        raise HTTPException(status_code=404, detail="Garden not found")
+
+    # 2. Check maturity
+    if not garden.credential_earned:
+        raise HTTPException(
+            status_code=400,
+            detail="Garden not mature enough to mint credential"
+        )
+
+    # 3. Prevent double mint
+    existing = db.query(Credential).filter(
+        Credential.game_session_id == garden.id
+    ).first()
+
+    if existing:
+        return {
+            "success": True,
+            "credential": json.loads(existing.credential_metadata),
+            "message": "Credential already minted"
+        }
+
+    # 4. NFT-like metadata
+    metadata = {
+        "name": f"BrainBonsai Credential — {garden.seed_type}",
+        "description": f"Proof of mastery in {garden.seed_type}",
+        "topic": garden.seed_type,
+        "garden_id": garden.id,
+        "maturity": garden.maturity,
+        "issued_at": datetime.now(timezone.utc).isoformat(),
+        "issuer": "BrainBonsai Garden",
+        "image": "https://brainbonsai.xyz/nft-placeholder.png",
+        "attributes": [
+            {"trait_type": "Topic", "value": garden.seed_type},
+            {"trait_type": "Completion", "value": "100%"},
+            {"trait_type": "Platform", "value": "BrainBonsai"}
+        ]
+    }
+
+    # 5. Create credential record
+    credential = Credential(
+        game_session_id=garden.id,
+        topic=garden.seed_type,
+        credential_metadata=json.dumps(metadata)
+    )
+
+    db.add(credential)
+    db.commit()
+    db.refresh(credential)
+
+    # 6. Return minted credential
+    return {
+        "success": True,
+        "credential": metadata
+    }
+
+
+@app.post("/api/mint-now")
+async def mint_now(payload: dict, db: Session = Depends(get_db)):
+    """Mint directly to a wallet without a garden. Payload: { wallet_address, topic }
+    Useful for simplified automatic minting from the frontend when you don't want to create a garden.
+    """
+    try:
+        wallet = payload.get("wallet_address")
+        topic = payload.get("topic", "BrainBonsai Credential")
+
+        if not wallet:
+            raise HTTPException(status_code=400, detail="wallet_address is required")
+
+        checksum = Web3.to_checksum_address(wallet)
+
+        nonce = w3.eth.get_transaction_count(OWNER_ACCOUNT.address)
+        tx = nft_contract.functions.mint(checksum).build_transaction({
+            "from": OWNER_ACCOUNT.address,
+            "nonce": nonce,
+            "gas": 250_000,
+            "gasPrice": w3.to_wei("10", "gwei"),
+            "chainId": 11155111
+        })
+
+        signed_tx = OWNER_ACCOUNT.sign_transaction(tx)
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+
+
+        metadata = {
+            "name": f"BrainBonsai Credential — {topic}",
+            "tx_hash": tx_hash.hex(),
+            "issued_at": datetime.now(timezone.utc).isoformat(),
+            "topic": topic,
+            "issuer": "BrainBonsai"
+        }
+
+        credential = Credential(
+            game_session_id=None,
+            topic=topic,
+            credential_metadata=json.dumps(metadata),
+            minted_at=datetime.now(timezone.utc)
+        )
+        db.add(credential)
+        db.commit()
+
+        return {"success": True, "tx_hash": tx_hash.hex(), "credential": metadata}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/debug/gardens")
+async def debug_gardens(db: Session = Depends(get_db)):
+    gardens = db.query(GameSession).all()
+
+    return [
+        {
+            "id": g.id,
+            "seed": g.seed_type,
+            "maturity": g.maturity,
+            "credential_earned": g.credential_earned
+        }
+        for g in gardens
+    ]
+
+@app.post("/api/demo/grow/{garden_id}")
+async def demo_grow_garden(
+    garden_id: int,
+    db: Session = Depends(get_db)
+):
+    garden = db.query(GameSession).filter(GameSession.id == garden_id).first()
+
+    if not garden:
+        raise HTTPException(status_code=404, detail="Garden not found")
+
+    garden.maturity = 100
+    garden.credential_earned = True
+    garden.updated_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(garden)
+
+    return {
+        "success": True,
+        "garden": {
+            "id": garden.id,
+            "seed": garden.seed_type,
+            "maturity": garden.maturity,
+            "credential_earned": garden.credential_earned
+        }
+    }
+
+#chirag code below 
+
+def verify_google_id_token(token: str) -> dict:
+    try:
+        idinfo = id_token.verify_oauth2_token(
+            token,
+            google_requests.Request(),
+            os.getenv("GOOGLE_CLIENT_ID")
+        )
+
+        return {
+            "google_sub": idinfo["sub"],
+            "email": idinfo.get("email"),
+            "email_verified": idinfo.get("email_verified", False),
+            "name": idinfo.get("name"),
+            "picture": idinfo.get("picture"),
+        }
+
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+
+class GoogleTokenRequest(BaseModel):
+    token: str
+
+
+
+
+
+@app.post("/api/auth/google/verify")
+def google_verify(
+    request: GoogleTokenRequest,
+    db: Session = Depends(get_db)
+):
+    user_info = verify_google_id_token(request.token)
+
+    user = db.query(User).filter(
+        User.google_sub == user_info["google_sub"]
+    ).first()
+
+    if not user:
+        acct = Account.create()
+        encrypted_pk = encrypt_private_key(acct.key.hex())
+
+        user = User(
+            google_sub=user_info["google_sub"],
+            email=user_info["email"],
+            wallet_address=acct.address,
+            encrypted_private_key=encrypted_pk
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    return {
+        "success": True,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "wallet_address": user.wallet_address
+        }
+    }
+
+
+@app.post("/api/auth/logout")
+def logout():
+    """Logout endpoint - clears user session and returns success"""
+    return {
+        "success": True,
+        "message": "Logged out successfully"
+    }
+
+
+# main.py
+
+def auto_mint_if_eligible(db: Session, garden: GameSession, wallet_address: Optional[str] = None):
+    # 1. Check if maturity is 100 and it hasn't been earned yet
+    if garden.maturity < 100 or garden.credential_earned:
+        return
+
+    # 2. Check for existing credential in the database to prevent double-minting
+    existing = db.query(Credential).filter(
+        Credential.game_session_id == garden.id
+    ).first()
+    if existing:
+        return 
+
+    # 3. Get the user's wallet address. Try garden.user_id first, otherwise use provided wallet_address
+    user = None
+    try:
+        if getattr(garden, 'user_id', None):
+            user = db.query(User).filter(User.id == garden.user_id).first()
+    except Exception:
+        user = None
+
+    if (not user or not user.wallet_address) and wallet_address:
+        user = db.query(User).filter(User.wallet_address == wallet_address).first()
+
+    if not user or not user.wallet_address:
+        return
+
+    try:
+        # 4. Prepare the Minting Transaction
+        nonce = w3.eth.get_transaction_count(OWNER_ACCOUNT.address)
+        
+        tx = nft_contract.functions.mint(
+            Web3.to_checksum_address(user.wallet_address)
+        ).build_transaction({
+            "from": OWNER_ACCOUNT.address,
+            "nonce": nonce,
+            "gas": 250_000,
+            "gasPrice": w3.to_wei("10", "gwei"),
+            "chainId": 11155111  # Sepolia Testnet [cite: 1]
+        })
+
+        # 5. Sign and Send
+        signed_tx = OWNER_ACCOUNT.sign_transaction(tx)
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+
+
+        # 6. Record the success in the database
+        metadata = {
+            "name": f"BrainBonsai Credential — {garden.seed_type}",
+            "tx_hash": tx_hash.hex(),
+            "issued_at": datetime.now(timezone.utc).isoformat(),
+            "topic": garden.seed_type,
+            "issuer": "BrainBonsai"
+        }
+
+        credential = Credential(
+            game_session_id=garden.id,
+            topic=garden.seed_type or "",
+            credential_metadata=json.dumps(metadata),
+            minted_at=datetime.now(timezone.utc)
+        )
+        garden.credential_earned = True
+        db.add(credential)
+        db.commit()
+
+        print(f"Successfully minted NFT for session {garden.id}. Tx: {tx_hash.hex()}")
+
+    except Exception as e:
+        db.rollback()
+        print(f"Minting failed: {e}")
+
+
+@app.post("/api/apply-growth")
+async def handle_growth(session_id: int, growth_amount: int, wallet_address: Optional[str] = None, db: Session = Depends(get_db)):
+    garden = db.query(GameSession).filter(GameSession.id == session_id).first()
+    if not garden:
+        raise HTTPException(status_code=404, detail="Garden not found")
+
+    # Use your utility to apply growth safely
+    garden.maturity = apply_growth(garden.maturity, growth_amount)
+    db.commit()
+
+    # Check for NFT eligibility after every growth update; forward optional wallet_address
+    auto_mint_if_eligible(db, garden, wallet_address)
+
+    return {"new_maturity": garden.maturity, "minted": garden.credential_earned}
+def apply_growth_and_check_mint(db: Session, session_id: int, increment: int):
+    garden = db.query(GameSession).filter(GameSession.id == session_id).first()
+    
+    # 1. Update Maturity
+    garden.maturity = min(100, garden.maturity + increment)
+    
+    # 2. Check if we just hit 100 and haven't minted yet
+    should_mint = False
+    if garden.maturity >= 100 and not garden.credential_earned:
+        should_mint = True
+        # Mark as earned immediately to prevent race conditions
+        garden.credential_earned = True 
+    
+    db.commit()
+
+    if should_mint:
+        # Call your existing auto_mint_if_eligible function
+        # This function should handle the Web3 transaction
+        auto_mint_if_eligible(db, garden)
+    
+    return garden
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="127.0.0.1", port=8001)

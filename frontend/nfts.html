@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Bonsai Chain · Learn Blockchain Basics</title>
+
+<style>
+:root{
+  --bg:#f6f8fb;
+  --card:#ffffff;
+  --text:#0f172a;
+  --muted:#64748b;
+  --border:#e5e7eb;
+  --primary:#16a34a;
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  font-family:Inter,system-ui,Arial,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+}
+
+h1,h2,h3{margin:0 0 10px}
+p{margin:0 0 8px;line-height:1.5}
+
+button{
+  background:var(--primary);
+  color:#fff;
+  border:none;
+  padding:12px 16px;
+  border-radius:10px;
+  font-weight:600;
+  cursor:pointer;
+}
+button.secondary{
+  background:#e5e7eb;
+  color:#0f172a;
+}
+button:disabled{
+  opacity:.5;
+  cursor:not-allowed;
+}
+
+input{
+  padding:12px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  width:260px;
+}
+
+.screen{
+  display:none;
+  min-height:100vh;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+}
+.screen.active{display:flex}
+
+.app{
+  display:none;
+  grid-template-columns:300px 1fr;
+  min-height:100vh;
+}
+
+.sidebar{
+  padding:24px;
+  border-right:1px solid var(--border);
+}
+
+.main{
+  padding:24px;
+  max-width:900px;
+}
+
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:16px;
+  margin-bottom:16px;
+}
+
+.muted{color:var(--muted);font-size:14px}
+
+.badge{
+  display:inline-block;
+  background:#ecfdf5;
+  color:#065f46;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:600;
+}
+
+.tx{
+  font-size:13px;
+  padding:8px 0;
+  border-bottom:1px dashed var(--border);
+}
+
+.modal{
+  position:fixed;
+  inset:0;
+  background:rgba(15,23,42,.35);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:10;
+}
+
+.modal-content{
+  background:#fff;
+  width:520px;
+  max-width:90%;
+  padding:24px;
+  border-radius:18px;
+  border:1px solid var(--border);
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="screen active" id="login">
+  <div>
+    <h1>🌱 Learn Blockchain Transactions</h1>
+    <p class="muted">
+      A safe simulator to understand wallets, gas, and Ethereum.<br>
+      No real money. No risk.
+    </p>
+    <br>
+    <input id="nameInput" placeholder="Your name" />
+    <br><br>
+    <button onclick="createWallet()">Create Wallet</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="app" id="app">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <h3>Your Wallet</h3>
+
+    <div class="card">
+      <p class="muted">Owner</p>
+      <b id="owner"></b>
+    </div>
+
+    <div class="card">
+      <p class="muted">Public Address</p>
+      <b id="address"></b>
+      <p class="muted">
+        Safe to share. This is your <b>public key</b>.
+      </p>
+    </div>
+
+    <div class="card">
+      <p class="muted">Balance</p>
+      <b><span id="balance"></span> BON</b>
+      <p class="muted">
+        BON = Bonsai Token (this app’s currency)<br>
+        Ethereum uses ETH
+      </p>
+    </div>
+
+    <div class="card">
+      <span class="badge">Gas Fee</span>
+      <p><b>2 BON</b> per transaction</p>
+      <p class="muted">
+        Gas pays the network to process your transaction.
+      </p>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- LESSON -->
+    <div class="card">
+      <h3>What is a Transaction?</h3>
+      <p>
+        A <b>transaction</b> is a message sent to the blockchain.
+      </p>
+      <p class="muted">
+        Blockchains don’t understand buttons — only transactions.
+      </p>
+    </div>
+
+    <!-- ACTION -->
+    <div class="card">
+      <h3>Send a Transaction</h3>
+      <p class="muted">
+        This will store a small piece of data on the Bonsai chain.
+      </p>
+      <br>
+      <button onclick="sendTransaction()">Send Transaction</button>
+    </div>
+
+    <!-- ETH UNITS -->
+    <div class="card">
+      <h3>Ethereum Currency Units</h3>
+      <p>
+        <b>1 ETH</b> = 1,000,000,000 Gwei  
+        <br>
+        <b>1 Gwei</b> = 1,000,000,000 Wei
+      </p>
+      <p class="muted">
+        ETH is the main currency.<br>
+        Gwei is used to talk about gas prices.<br>
+        Wei is the smallest unit.
+      </p>
+    </div>
+
+    <!-- LEDGER -->
+    <div class="card">
+      <h3>Public Ledger</h3>
+      <p class="muted">
+        Once recorded, transactions cannot be changed.
+      </p>
+      <div id="ledger"></div>
+    </div>
+
+    <!-- REAL ETHEREUM -->
+    <div class="card">
+      <h3>Do This on Real Ethereum (Safely)</h3>
+      <ol class="muted">
+        <li>Install MetaMask</li>
+        <li>Create a wallet</li>
+        <li>Switch to a test network (Sepolia)</li>
+        <li>Get free test ETH from a faucet</li>
+        <li>Send a test transaction</li>
+      </ol>
+      <p class="muted">
+        Real Ethereum works the same way — but uses ETH instead of BON.
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<!-- EXPLANATION MODAL -->
+<div class="modal" id="modal">
+  <div class="modal-content">
+    <h3>📘 What Just Happened?</h3>
+    <div id="modalText"></div>
+    <br>
+    <button onclick="closeModal()">Got it</button>
+  </div>
+</div>
+
+<script>
+/* ---------------- STATE ---------------- */
+let state = JSON.parse(localStorage.getItem("bonsai_tx")) || null;
+
+/* ---------------- HELPERS ---------------- */
+function randHex(len){
+  return Math.random().toString(16).slice(2,2+len).toUpperCase();
+}
+
+/* ---------------- WALLET ---------------- */
+function createWallet(){
+  const name = document.getElementById("nameInput").value.trim();
+  if(!name) return alert("Enter your name");
+
+  state = {
+    name,
+    address:"0x"+randHex(8),
+    balance:20,
+    gas:2,
+    block:12000,
+    ledger:[]
+  };
+  save();
+  load();
+}
+
+function save(){
+  localStorage.setItem("bonsai_tx",JSON.stringify(state));
+}
+
+function load(){
+  document.getElementById("login").classList.remove("active");
+  document.getElementById("app").style.display="grid";
+
+  document.getElementById("owner").innerText = state.name;
+  document.getElementById("address").innerText = state.address;
+  render();
+}
+
+function render(){
+  document.getElementById("balance").innerText = state.balance;
+  const l = document.getElementById("ledger");
+  l.innerHTML="";
+  state.ledger.forEach(tx=>{
+    const d=document.createElement("div");
+    d.className="tx";
+    d.innerText=`Block ${tx.block} · Hash ${tx.hash}`;
+    l.appendChild(d);
+  });
+}
+
+/* ---------------- TRANSACTION ---------------- */
+function sendTransaction(){
+  if(state.balance < state.gas){
+    alert("Not enough gas (BON)");
+    return;
+  }
+
+  state.balance -= state.gas;
+  const hash="0x"+randHex(12);
+  const block=++state.block;
+
+  state.ledger.unshift({hash,block});
+  save();
+  render();
+
+  showExplanation(hash,block);
+}
+
+/* ---------------- MODAL ---------------- */
+function showExplanation(hash,block){
+  document.getElementById("modalText").innerHTML = `
+  <p><b>You sent a transaction.</b></p>
+  <p class="muted">
+    Gas paid: 2 BON<br>
+    Transaction Hash: <code>${hash}</code><br>
+    Block Number: ${block}
+  </p>
+  <hr>
+  <p><b>If this were real Ethereum:</b></p>
+  <p class="muted">
+    • Gas would be paid in ETH (using Gwei)<br>
+    • This hash would appear on Etherscan<br>
+    • Anyone could verify it publicly
+  </p>
+  `;
+  document.getElementById("modal").style.display="flex";
+}
+
+function closeModal(){
+  document.getElementById("modal").style.display="none";
+}
+
+/* ---------------- AUTO LOAD ---------------- */
+if(state) load();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <h1>Level 1: My Wallet</h1>
+    <button onclick="connect()">Connect Wallet</button>
+    <p>Address: <span id="userAddress">Not Connected</span></p>
+    <p>Balance: <span id="userBalance">0</span> BONSAI</p>
+
+    <hr>
+    <h1>Level 2: The Faucet</h1>
+    <button onclick="claimSeeds()">Claim 20 BONSAI</button>
+
+    <hr>
+    <h1>Level 4: Permission & Staking</h1>
+    <button onclick="approveTokens()">1. Give Permission</button>
+    <button onclick="stakeTokens()">2. Plant (Stake) Tokens</button>
+
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
+    <script>
+        const tokenAddress = "YOUR_TOKEN_ADDRESS_HERE";
+        const gameAddress = "YOUR_GAME_ADDRESS_HERE";
+        const abi = [ /* Paste the 'ABI' from Remix here */ ];
+
+        async function connect() {
+            const provider = new ethers.providers.Web3Provider(window.ethereum);
+            await provider.send("eth_requestAccounts", []);
+            const signer = provider.getSigner();
+            document.getElementById('userAddress').innerText = await signer.getAddress();
+        }
+
+        async function claimSeeds() {
+            const provider = new ethers.providers.Web3Provider(window.ethereum);
+            const signer = provider.getSigner();
+            const contract = new ethers.Contract(tokenAddress, abi, signer);
+            const tx = await contract.claimSeeds();
+            alert("Transaction sent! Hash: " + tx.hash);
+        }
+    </script>
+</body>
+</html>

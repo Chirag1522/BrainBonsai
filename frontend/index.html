@@ -1,97 +1,212 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/4.5.0/web3.min.js"></script>
+    
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>perplexitree</title>
+    <title>Brain Bonsai</title>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="/static/styles.css">
+
+    <style>
+        /* --- NFT MODAL STYLES --- */
+        .nft-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .nft-modal-content {
+            background: #111;
+            border: 1px solid #333;
+            width: 90%;
+            max-width: 850px;
+            height: 75vh;
+            border-radius: 24px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+            animation: modalFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes modalFadeIn {
+            from { transform: scale(0.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .nft-modal-header {
+            padding: 30px;
+            border-bottom: 1px solid #222;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(to bottom, #161616, #111);
+        }
+
+        .nft-close-btn {
+            background: #222; border: none; color: #888; 
+            width: 40px; height: 40px; border-radius: 50%;
+            font-size: 24px; cursor: pointer; transition: 0.2s;
+        }
+        .nft-close-btn:hover { background: #ff4444; color: white; }
+
+        .nft-wallet-section {
+            padding: 20px 30px;
+            background: #181818;
+            border-bottom: 1px solid #222;
+        }
+
+        .nft-wallet-label {
+            font-size: 10px; color: #666; text-transform: uppercase; 
+            letter-spacing: 1.5px; font-weight: 700;
+        }
+
+        .nft-wallet-address {
+            font-family: 'JetBrains Mono', monospace;
+            color: #00d2ff; font-size: 13px; margin-top: 8px;
+            word-break: break-all; background: rgba(0,210,255,0.05);
+            padding: 10px; border-radius: 8px; border: 1px solid #00d2ff33;
+        }
+
+        .nft-grid-container {
+            flex: 1; overflow-y: auto; padding: 30px;
+        }
+
+        .nft-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 25px;
+        }
+
+        .nft-card {
+            background: #1a1a1a; border-radius: 16px; border: 1px solid #333;
+            overflow: hidden; transition: 0.3s; position: relative;
+        }
+        .nft-card:hover { transform: translateY(-5px); border-color: #00d2ff; }
+
+        .nft-img-area {
+            height: 180px; background: #222;
+            display: flex; align-items: center; justify-content: center;
+            overflow: hidden;
+        }
+
+        .nft-info { padding: 15px; border-top: 1px solid #222; }
+        .nft-title { color: #eee; font-size: 14px; font-weight: 600; margin: 0; }
+
+        .empty-state {
+            grid-column: 1 / -1; text-align: center; padding: 60px 0;
+            color: #555;
+        }
+        .empty-state i { font-size: 60px; margin-bottom: 20px; opacity: 0.2; }
+
+        .status-tag {
+            font-size: 9px; color: #00d2ff; background: rgba(0,210,255,0.1);
+            padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 5px;
+        }
+
+        /* Scrollbar Style */
+        .nft-grid-container::-webkit-scrollbar { width: 8px; }
+        .nft-grid-container::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+    </style>
 </head>
+
 <body>
-    <h1>perplexitree</h1>
-    
+
+    <div id="g_id_onload" data-client_id="639252232066-hfue1haicnfpqn65qgrcpsgr5muh6uic.apps.googleusercontent.com"></div>
+
+    <h1>Brain Bonsai</h1>
     <canvas id="gameCanvas"></canvas>
-    
-    <div class="controls">
-        <button id="restartBtn" title="restart game"><i class="fas fa-redo"></i></button>
-        <button id="dayNightBtn" title="toggle day/night mode"><i class="fas fa-moon"></i></button>
-        <button id="saveBtn" title="save game state"><i class="fas fa-save"></i></button>
-        <button id="loadBtn" title="load game state"><i class="fas fa-folder-open"></i></button>
+
+    <div id="authContainer" style="position: fixed; top: 10px; right: 10px; z-index: 1000;">
+        <div id="g_id_signin"></div>
+        <div id="userInfo" style="display:none; margin-top:10px;"></div>
     </div>
-    
+
+    <div class="controls">
+        <button id="restartBtn" title="Restart"><i class="fas fa-redo"></i></button>
+        <button id="dayNightBtn" title="Theme"><i class="fas fa-moon"></i></button>
+        <button id="saveBtn" title="Save" onclick="event.stopPropagation(); saveGame();">
+    <i class="fas fa-save"></i>
+</button>
+
+
+<button id="loadBtn" title="Load" onclick="loadLatestGame()">
+    <i class="fas fa-folder-open"></i>
+</button>
+
+        <button id="homeBtn" title="Home"><i class="fas fa-tree"></i></button>
+    </div>
+
     <div class="toolbar">
-        <button id="panTool" class="tool-btn" title="pan tool - drag to move around the view"><i class="fas fa-arrows-alt"></i></button>
-        <button id="studyTool" class="tool-btn" title="study tool - hover to see search results"><i class="fas fa-search"></i></button>
-        <button id="growthTool" class="tool-btn active" title="growth tool - click on nodes to grow branches"><i class="fas fa-plus"></i></button>
-        <button id="cutTool" class="tool-btn" title="cut tool - click and drag to prune branches"><i class="fas fa-cut"></i></button>
-        <button id="leavesTool" class="tool-btn" title="flashcard tool - click on nodes to create flashcards"><i class="fas fa-leaf"></i></button>
-        <button id="flowerTool" class="tool-btn" title="blossom your knowledge - click on branch ends to add flowers"><i class="fas fa-seedling"></i></button>
-        <button id="fruitTool" class="tool-btn" title="bear fruit of labour - click on flowers to transform them into apples"><i class="fas fa-apple-alt"></i></button>
-        <button id="harvestTool" class="tool-btn" title="harvest knowledge - click on apples to take a quiz"><i class="fas fa-hand-paper"></i></button>
-        <button id="repositionTool" class="tool-btn" title="reposition tool - drag branch ends to move and resize"><i class="fas fa-edit"></i></button>
+        <button id="panTool" class="tool-btn"><i class="fas fa-arrows-alt"></i></button>
+        <button id="studyTool" class="tool-btn"><i class="fas fa-search"></i></button>
+        <button id="growthTool" class="tool-btn active"><i class="fas fa-plus"></i></button>
+        <button id="cutTool" class="tool-btn"><i class="fas fa-cut"></i></button>
+        <button id="leavesTool" class="tool-btn"><i class="fas fa-leaf"></i></button>
+        <button id="flowerTool" class="tool-btn"><i class="fas fa-seedling"></i></button>
+        <button id="fruitTool" class="tool-btn"><i class="fas fa-apple-alt"></i></button>
+        <button id="harvestTool" class="tool-btn"><i class="fas fa-hand-paper"></i></button>
+        <button id="repositionTool" class="tool-btn"><i class="fas fa-edit"></i></button>
+        <button id="nft-s" class="tool-btn" onclick="openNftModal()">
+            <i class="fas fa-gem"></i>
+        </button>
     </div>
 
     <div class="status" id="status">Game ready!</div>
-    
-    <!-- Modal for study tool results -->
-    <div id="studyModal" class="study-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="modalTitle">Topic Information</h3>
-                <div class="modal-controls">
-                    <button id="readFromSourceBtn" class="modal-btn" title="read from source" style="display: none;">📖</button>
-                    <button id="showFlashcardsBtn" class="modal-btn" title="show flashcards for this topic" style="display: none;">📚</button>
-                    <button id="closeModal" class="modal-btn" title="close">×</button>
+
+    <div id="nftModal" class="nft-modal-overlay">
+        <div class="nft-modal-content">
+            <div class="nft-modal-header">
+                <div>
+                    <h2 style="margin:0; color:#fff; display:flex; align-items:center; gap:10px;">
+                        <i class="fas fa-gem" style="color:#00d2ff;"></i> My Brain Assets
+                    </h2>
+                    <p id="modalUserEmail" style="margin:5px 0 0; color:#666; font-size:13px;"></p>
                 </div>
+                <button class="nft-close-btn" onclick="closeNftModal()">&times;</button>
             </div>
-            <div class="modal-body">
-                <p id="modalDescription"></p>
+
+            <div class="nft-wallet-section">
+                <div class="nft-wallet-label">Connected Wallet (Sepolia Network)</div>
+                <div id="modalWalletAddress" class="nft-wallet-address">Scanning...</div>
+            </div>
+
+            <div class="nft-grid-container">
+                <div id="nftGrid" class="nft-grid">
+                    </div>
             </div>
         </div>
     </div>
-    
-    <!-- Modal for loading game sessions -->
-    <div id="loadModal" class="study-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Load Game Session</h3>
-                <div class="modal-controls">
-                    <button id="closeLoadModal" class="modal-btn" title="close">×</button>
-                </div>
+
+    <!-- Quiz modal (apple falls first, then quiz opens) -->
+    <div id="quizModal" class="quiz-modal-overlay">
+        <div class="quiz-modal-content">
+            <div class="quiz-modal-header">
+                <h3>Quiz</h3>
+                <button id="closeQuizModal" type="button" class="quiz-modal-close" aria-label="Close">&times;</button>
             </div>
-            <div class="modal-body">
-                <div id="sessionsList">
-                    <p>Loading sessions...</p>
-                </div>
-            </div>
+            <p id="quizQuestion" class="quiz-question"></p>
+            <div id="quizOptions" class="quiz-options"></div>
+            <div id="quizResult" class="quiz-result" style="display: none;"></div>
+            <div id="quizScore" class="quiz-score" style="display: none;"></div>
         </div>
     </div>
+
     
-    <!-- Modal for quiz -->
-    <div id="quizModal" class="study-modal">
-        <div class="modal-content quiz-modal-content">
-            <div class="modal-header">
-                <h3 id="quizTitle">Knowledge Quiz</h3>
-                <div class="modal-controls">
-                    <button id="closeQuizModal" class="modal-btn" title="close">×</button>
-                </div>
-            </div>
-            <div class="modal-body">
-                <div id="quizContent">
-                    <div id="quizQuestion" class="quiz-question"></div>
-                    <div id="quizOptions" class="quiz-options"></div>
-                    <div id="quizResult" class="quiz-result" style="display: none;"></div>
-                    <div id="quizScore" class="quiz-score" style="display: none;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    
-    <!-- Game Scripts -->
     <script src="/static/js/flashcards.js?v=66"></script>
     <script src="/static/js/quiz.js?v=66"></script>
     <script src="/static/js/searchManager.js?v=66"></script>
@@ -106,7 +221,220 @@
     <script src="/static/js/pruning.js?v=66"></script>
     <script src="/static/js/renderer.js?v=66"></script>
     <script src="/static/js/app.js?v=66"></script>
-    
-    
+    <script src="/static/js/garden.js?v=66"></script>
+    <script src="/static/js/index.js?v=1"></script>
+
+
+    <script>
+        
+
+        // --- UPDATED CONFIG ---
+// --- CONFIGURATION ---
+
+        
+const NFT_CONTRACT_ADDRESS = "0x56a026E944abB1d8C14d8117510d60b17d693AAc";
+const SEPOLIA_RPC = "https://ethereum-sepolia-rpc.publicnode.com";
+
+const NFT_ABI = [
+  {
+    "inputs": [{"internalType":"address","name":"owner","type":"address"}],
+    "name":"balanceOf",
+    "outputs":[{"internalType":"uint256","name":"","type":"uint256"}],
+    "stateMutability":"view",
+    "type":"function"
+  },
+  {
+    "inputs": [],
+    "name": "tokenCounter",
+    "outputs": [{"internalType":"uint256","name":"","type":"uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],
+    "name":"ownerOf",
+    "outputs":[{"internalType":"address","name":"","type":"address"}],
+    "stateMutability":"view",
+    "type":"function"
+  }
+];
+
+async function openNftModal() {
+  const saved = localStorage.getItem("bonsai_user");
+  if (!saved) return alert("Please sign in first");
+
+  const user = JSON.parse(saved);
+  const userAddress = user.wallet_address.toLowerCase();
+
+  document.getElementById("modalUserEmail").innerText = user.email;
+  document.getElementById("modalWalletAddress").innerText = user.wallet_address;
+  document.getElementById("nftModal").style.display = "flex";
+
+  const grid = document.getElementById("nftGrid");
+  grid.innerHTML = `
+    <div class="empty-state">
+      <i class="fas fa-spinner fa-spin"></i>
+      <p>Scanning Brain Bonsai NFTs on Sepolia...</p>
+    </div>
+  `;
+
+  try {
+    const web3 = new Web3(SEPOLIA_RPC);
+    const contract = new web3.eth.Contract(NFT_ABI, NFT_CONTRACT_ADDRESS);
+
+    const totalMinted = Number(await contract.methods.tokenCounter().call());
+
+    let found = 0;
+    let html = "";
+
+    // 🔁 TOKEN IDS START FROM 1
+    for (let tokenId = 1; tokenId <= totalMinted; tokenId++) {
+      try {
+        const owner = await contract.methods.ownerOf(tokenId).call();
+
+        if (owner.toLowerCase() === userAddress) {
+          found++;
+          html += `
+            <div class="nft-card">
+              <div class="nft-img-area">
+                <i class="fas fa-brain" style="font-size:48px;color:#00d2ff;"></i>
+              </div>
+              <div class="nft-info">
+                <p class="nft-title">Brain Bonsai Credential</p>
+                <span class="status-tag">Token #${tokenId}</span>
+              </div>
+            </div>
+          `;
+        }
+      } catch (_) {
+        // token burned or nonexistent → ignore
+      }
+    }
+
+    grid.innerHTML = found
+      ? html
+      : `
+        <div class="empty-state">
+          <i class="fas fa-box-open"></i>
+          <p>No Brain Bonsai NFTs found.</p>
+        </div>
+      `;
+
+  } catch (err) {
+    console.error("Blockchain error:", err);
+    grid.innerHTML = `
+      <div class="empty-state">
+        <p style="color:#ff4444;">Blockchain connection failed.</p>
+      </div>
+    `;
+  }
+}
+
+function closeNftModal() {
+  document.getElementById("nftModal").style.display = "none";
+}
+
+
+
+        // --- AUTH LOGIC ---
+        function renderUser(user) {
+            document.getElementById("g_id_signin").style.display = "none";
+            const userInfo = document.getElementById("userInfo");
+            userInfo.style.display = "block";
+            userInfo.innerHTML = `
+                <div style="padding:12px; background:#1e1e1e; border-radius:8px; display:flex; flex-direction:column; gap:8px; border:1px solid #333;">
+                    <div>
+                        <div style="color:#fff; font-weight:600; font-size:13px;">${user.email}</div>
+                        <div style="font-family:'JetBrains Mono'; font-size:10px; color:#00d2ff;">${user.wallet_address.substring(0,6)}...${user.wallet_address.substring(38)}</div>
+                    </div>
+                    <button id="logoutBtn" onclick="handleLogout()" style="
+                        padding: 8px 12px;
+                        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                        font-size: 12px;
+                        font-weight: 500;
+                        cursor: pointer;
+                        transition: all 0.3s ease;
+                    " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                        Logout
+                    </button>
+                </div>
+            `;
+        }
+
+        async function handleLogout() {
+            if (!confirm('Are you sure you want to logout?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('http://127.0.0.1:8001/api/auth/logout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    localStorage.removeItem('bonsai_user');
+                    localStorage.removeItem('auth_token');
+                    document.getElementById("g_id_signin").style.display = "block";
+                    document.getElementById("userInfo").style.display = "none";
+                    document.getElementById("userInfo").innerHTML = '';
+                    location.reload();
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                alert('Logout failed. Please try again.');
+            }
+        }
+
+        async function handleCredentialResponse(response) {
+            try {
+                const res = await fetch("http://127.0.0.1:8001/api/auth/google/verify", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token: response.credential })
+                });
+                const text = await res.text();
+console.log("[MINT] Raw backend response:", text);
+
+let data;
+try {
+    data = JSON.parse(text);
+} catch (e) {
+    console.error("[MINT] Backend did not return JSON");
+    return;
+}
+
+                if (data.user) {
+                    localStorage.setItem("bonsai_user", JSON.stringify(data.user));
+                    renderUser(data.user);
+                }
+            } catch (err) { console.error("Auth Error:", err); }
+        }
+
+        
+        window.onload = function () {
+            const saved = localStorage.getItem("bonsai_user");
+            if (saved) renderUser(JSON.parse(saved));
+
+            google.accounts.id.initialize({
+                client_id: "639252232066-hfue1haicnfpqn65qgrcpsgr5muh6uic.apps.googleusercontent.com",
+                callback: handleCredentialResponse
+            });
+            google.accounts.id.renderButton(document.getElementById("g_id_signin"), { theme: "outline", size: "medium" });
+        };
+
+
+
+        const BRANCH_MINT_THRESHOLD = 8;
+
+window.checkAndMintByBranches = checkAndMintByBranches;
+
+
+window.checkAndMintByBranches = checkAndMintByBranches;
+
+    </script>
 </body>
 </html>

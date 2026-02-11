@@ -7,6 +7,33 @@ import os
 
 Base = declarative_base()
 
+class NFTCredential(Base):
+    __tablename__ = "nft_credentials"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String)          # e.g., "Master of Photosynthesis"
+    nft_type = Column(String)       # e.g., "Seed", "Leaf", "Golden Fruit"
+    image_url = Column(String)      # URL to the NFT image
+    
+    # Link to the user via wallet address
+    owner_wallet = Column(String, index=True)
+    
+    # Relationship (Optional, but helpful)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # If you have a User model, add this relationship there:
+    # nfts = relationship("NFTCredential", back_populates="owner")
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    google_sub = Column(String, unique=True, index=True)
+    email = Column(String, index=True)
+    wallet_address = Column(String, unique=True, index=True)
+    encrypted_private_key = Column(Text, nullable=False)
+ 
 class GameSession(Base):
     __tablename__ = "game_sessions"
     
@@ -16,7 +43,12 @@ class GameSession(Base):
     camera_offset_y = Column(Float, default=0.0)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    
+    # Web3 Garden fields
+    seed_type = Column(String, nullable=True)  # e.g. "DeFi Basics"
+    maturity = Column(Integer, default=0)      # 0–100 growth %
+    credential_earned = Column(Boolean, default=False)
+    last_growth_at = Column(DateTime, nullable=True)
+
     # Relationships
     search_results = relationship("SearchResult", back_populates="game_session", cascade="all, delete-orphan")
     branches = relationship("Branch", back_populates="game_session", cascade="all, delete-orphan")
@@ -116,7 +148,7 @@ class Fruit(Base):
     __tablename__ = "fruits"
     
     id = Column(Integer, primary_key=True, index=True)
-    game_session_id = Column(Integer, ForeignKey("game_sessions.id"), nullable=False)
+    game_session_id = Column(Integer, ForeignKey("game_sessions.id"), nullable=True)
     
     x = Column(Float, nullable=False)
     y = Column(Float, nullable=False)
@@ -126,6 +158,20 @@ class Fruit(Base):
     
     # Relationships
     game_session = relationship("GameSession", back_populates="fruits")
+
+class Credential(Base):
+    __tablename__ = "credentials"
+
+    id = Column(Integer, primary_key=True, index=True)
+    game_session_id = Column(Integer, ForeignKey("game_sessions.id"), nullable=True)
+
+    topic = Column(String, nullable=False)
+    credential_metadata = Column(Text, nullable=False)  # ✅ renamed
+    minted_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    game_session = relationship("GameSession")
+
+
 
 class Flower(Base):
     __tablename__ = "flowers"

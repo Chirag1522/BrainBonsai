@@ -1,6 +1,13 @@
 /**
  * Main Application - Initializes and coordinates all game systems
  */
+
+
+function getTreeIdFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("treeId");
+}
+
 class PruneApp {
     constructor() {
         this.game = null;
@@ -10,6 +17,10 @@ class PruneApp {
     
     init() {
         console.log('Initializing Prune Game App...');
+    
+
+this.treeId = getTreeIdFromURL();
+    console.log('Tree ID:', this.treeId || 'new tree');
         
         // Initialize game systems
         this.game = new UltraSimplePrune();
@@ -27,6 +38,12 @@ class PruneApp {
         
         // Initialize save/load button listeners
         this.initSaveLoadListeners();
+         // 🔹 TEMP hook for future loading
+    if (this.treeId) {
+        this.game.updateStatus(`Loaded tree: ${this.treeId}`);
+        // later: this.game.loadTreeById(this.treeId)
+    }
+
         
         console.log('Prune Game App initialized successfully!');
     }
@@ -104,6 +121,19 @@ class PruneApp {
                 }
             });
         }
+
+        // Home / Garden button
+const homeBtn = document.getElementById('homeBtn');
+if (homeBtn) {
+    console.log('Home button found');
+
+    homeBtn.addEventListener('click', () => {
+        console.log('Home button clicked');
+        window.location.href = '/home';
+    });
+}
+
+
     }
     
     async showLoadModal() {
@@ -212,6 +242,8 @@ class PruneApp {
         // Reset the game state
         this.game.restartGame();
     }
+
+    
 }
 
 // Initialize the application when the DOM is loaded

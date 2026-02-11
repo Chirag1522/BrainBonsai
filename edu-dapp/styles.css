@@ -1,0 +1,158 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, sans-serif;
+  background: radial-gradient(circle at top, #eafff2, #f6fbf8);
+  color: #1f2937;
+}
+
+.app {
+  max-width: 820px;
+  margin: auto;
+  padding: 40px 20px 100px;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+header h1 {
+  font-size: 42px;
+  color: #2fbf71;
+}
+
+header p {
+  color: #6b7280;
+}
+
+.screen {
+  display: none;
+  animation: fade 0.4s ease;
+}
+
+.screen.active {
+  display: block;
+}
+
+@keyframes fade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+h2 {
+  margin-bottom: 16px;
+}
+
+input {
+  width: 100%;
+  padding: 14px;
+  margin-top: 12px;
+  border-radius: 12px;
+  border: 1px solid #d1fae5;
+  font-size: 15px;
+}
+
+button {
+  margin-top: 18px;
+  padding: 14px;
+  width: 100%;
+  border-radius: 14px;
+  border: none;
+  background: #2fbf71;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 10px 20px rgba(47,191,113,.25);
+}
+
+.card {
+  background: white;
+  border-radius: 16px;
+  padding: 20px;
+  margin-top: 16px;
+  border: 1px solid #d1fae5;
+}
+
+.note {
+  margin-top: 14px;
+  padding: 14px;
+  background: #e7f7ef;
+  border-left: 4px solid #2fbf71;
+  border-radius: 10px;
+}
+
+.mono {
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.gas {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.gas button {
+  flex: 1;
+  background: white;
+  color: #1f2937;
+  border: 1px solid #d1fae5;
+}
+
+.gas button.active {
+  background: #2fbf71;
+  color: white;
+}
+
+table {
+  width: 100%;
+  margin-top: 20px;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+th, td {
+  padding: 12px;
+  font-size: 14px;
+}
+
+th {
+  background: #e7f7ef;
+}
+
+.journey {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  z-index: 100;
+}
+
+.journey.hidden {
+  display: none;
+}
+
+.node {
+  background: white;
+  padding: 20px;
+  border-radius: 50%;
+  border: 2px solid #2fbf71;
+  opacity: .3;
+}
+
+.node.active {
+  opacity: 1;
+  box-shadow: 0 0 20px #2fbf71;
+}
+
+.line {
+  width: 40px;
+  height: 2px;
+  background: #2fbf71;
+}

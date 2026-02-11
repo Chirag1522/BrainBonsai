@@ -179,7 +179,7 @@ class QuizManager {
             scoreElement.innerHTML = `
                 <div>Your Score: ${score}/${questions.length}</div>
                 <div>Percentage: ${percentage}%</div>
-                <div>${percentage >= 80 ? 'Excellent! 🌟' : percentage >= 60 ? 'Good job! 👍' : 'Keep studying! 📚'}</div>
+                <div style="margin-top:12px; padding-top:12px; border-top:1px solid #3a3a3c; color:#aeaeb2; font-size:14px; font-weight:400;">Branch complete — you can grow from here. Marks do not affect growth.</div>
             `;
             scoreElement.style.display = 'block';
             this.persistQuizScore(score, questions.length, percentage);
@@ -302,6 +302,21 @@ class QuizManager {
             recordedAt: new Date()
         };
         this.updateQuizDeckButton();
+    }
+
+    /** Returns true if this branch has had its quiz completed (saved quiz with lastScore). */
+    isBranchQuizCompleted(branch) {
+        if (!branch) return false;
+        const branchId = branch.id || this.flashcardManager?.game?.treeManager?.assignBranchId?.(branch);
+        if (!branchId) return false;
+        const id = String(branchId);
+        const quiz = this.savedQuizzes.find(q =>
+            q.lastScore != null && (
+                String(q.branchId || '') === id ||
+                (q.branch && String(q.branch.id || '') === id)
+            )
+        );
+        return !!quiz;
     }
 
     saveQuiz(questions, branch, flashcardsUsed = []) {

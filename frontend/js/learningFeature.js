@@ -32,20 +32,21 @@ window.LearningFeature = class LearningFeature {
         }
 
         this.game.treeManager.animateFruitHarvest(node.fruit);
+        this.game.updateStatus('Apple fell! Get ready for the quiz…');
 
-        const prepared = this.game.quizManager.consumePreparedQuiz(targetBranch);
-        if (prepared) {
-            this.game.quizManager.launchPreparedQuiz(prepared);
-            this.game.quizManager.prepareQuizForBranch(targetBranch); // warm next quiz
-            return;
-        }
-
-        try {
-            await this.game.quizManager.startQuizFromFlashcards(targetBranch);
-        } finally {
-            // Always queue the next quiz so harvesting stays instant after fallback.
+        const showQuizAfterFall = () => {
+            const prepared = this.game.quizManager.consumePreparedQuiz(targetBranch);
+            if (prepared) {
+                this.game.quizManager.launchPreparedQuiz(prepared);
+                this.game.quizManager.prepareQuizForBranch(targetBranch);
+                return;
+            }
+            this.game.quizManager.startQuizFromFlashcards(targetBranch).then(() => {}).catch(() => {});
             this.game.quizManager.prepareQuizForBranch(targetBranch);
-        }
+        };
+
+        const fallDurationMs = 2400;
+        setTimeout(showQuizAfterFall, fallDurationMs);
     }
 
     async createQuizFromFlashcards() {

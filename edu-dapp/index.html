@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BlockLearn — Blockchain Simulator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- HEADER -->
+  <header>
+    <h1>🌱 BlockLearn</h1>
+    <p>Watch the blockchain work — don’t just read about it</p>
+  </header>
+
+  <!-- SCREEN: WELCOME -->
+  <section class="screen active" id="welcome">
+    <h2>You are about to simulate a blockchain</h2>
+    <p>
+      No real money. No crypto hype.<br>
+      Just **pure blockchain mechanics**.
+    </p>
+
+    <div class="note">
+      We use <strong>Bonsai Token (BON)</strong><br>
+      BON behaves like ETH — safely.
+    </div>
+
+    <button onclick="app.start()">Start Simulation</button>
+  </section>
+
+  <!-- SCREEN: WALLET -->
+  <section class="screen" id="wallet">
+    <h2>Create your wallet</h2>
+
+    <input id="nameInput" placeholder="Enter your name">
+
+    <div class="note">
+      A wallet does NOT store money.<br>
+      It stores <strong>keys</strong>.
+    </div>
+
+    <button onclick="app.createWallet()">Generate Wallet</button>
+  </section>
+
+  <!-- SCREEN: DASHBOARD -->
+  <section class="screen" id="dashboard">
+    <h2>Your Wallet</h2>
+
+    <div class="card">
+      <p><strong>Name:</strong> <span id="wName"></span></p>
+      <p><strong>Address:</strong><br><span class="mono" id="wAddr"></span></p>
+      <p><strong>Balance:</strong> <span id="wBal"></span> BON</p>
+    </div>
+
+    <button onclick="app.go('tx')">Send Transaction</button>
+    <button onclick="app.go('ledger')">View Blockchain</button>
+  </section>
+
+  <!-- SCREEN: TRANSACTION -->
+  <section class="screen" id="tx">
+    <h2>Create Transaction</h2>
+
+    <input id="toAddr" placeholder="Recipient address">
+    <input id="amount" type="number" placeholder="Amount (BON)">
+
+    <div class="gas">
+      <button onclick="app.setGas(10,this)">🐢 Slow</button>
+      <button class="active" onclick="app.setGas(50,this)">⚡ Standard</button>
+      <button onclick="app.setGas(100,this)">🚀 Fast</button>
+    </div>
+
+    <div id="feeInfo"></div>
+
+    <button onclick="app.review()">Review Transaction</button>
+  </section>
+
+  <!-- SCREEN: CONFIRM -->
+  <section class="screen" id="confirm">
+    <h2>Sign Transaction</h2>
+
+    <div class="card" id="confirmBox"></div>
+
+    <button onclick="app.execute()">Sign & Broadcast</button>
+  </section>
+
+  <!-- SCREEN: RECEIPT -->
+  <section class="screen" id="receipt">
+    <h2>Transaction Recorded</h2>
+
+    <div class="card" id="receiptBox"></div>
+
+    <button onclick="app.go('ledger')">View Blockchain</button>
+  </section>
+
+  <!-- SCREEN: LEDGER -->
+  <section class="screen" id="ledger">
+    <h2>Public Blockchain Ledger</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Block</th>
+          <th>Hash</th>
+          <th>Amount</th>
+          <th>Gas</th>
+        </tr>
+      </thead>
+      <tbody id="ledgerBody"></tbody>
+    </table>
+
+    <button onclick="app.go('dashboard')">Back</button>
+  </section>
+
+</div>
+
+<!-- TRANSACTION JOURNEY OVERLAY -->
+<div id="journey" class="journey hidden">
+  <div class="node active">Wallet</div>
+  <div class="line"></div>
+  <div class="node">Mempool</div>
+  <div class="line"></div>
+  <div class="node">Block</div>
+</div>
+
+<script src="blockchain.js"></script>
+<script src="wallet.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>

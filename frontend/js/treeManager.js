@@ -15,7 +15,11 @@ window.TreeManager = class TreeManager {
             flowers: baseTree.flowers || [],
             oldX: baseTree.oldX || 0,
             oldY: baseTree.oldY || 0
+            ,maturity: baseTree.maturity || (parseInt(localStorage.getItem('bonsai_maturity') || '0') || 0)
+            ,minted: baseTree.minted || (localStorage.getItem('bonsai_minted') === 'true')
         };
+        window.tree = this.game.tree;
+        window.camera = this.game.cameraOffset;
 
         this.game.lightSource = {
             x: this.game.width / 2,
@@ -136,7 +140,33 @@ window.TreeManager = class TreeManager {
 
         if (isTrunkTop && existingBranches.length === 0) {
             this.createInitialFanBranches(node);
-        } else {
+        } else if (!isTrunkTop) {
+            const branchEndingHere = this.game.tree.branches.find(b =>
+                Math.abs(b.end.x - node.x) < 5 && Math.abs(b.end.y - node.y) < 5
+            );
+            if (branchEndingHere) {
+                const hasFruit = this.game.tree.fruits.some(f =>
+                    f.branch === branchEndingHere || (f.branch && f.branch.id === branchEndingHere.id)
+                );
+                const quizDone = this.game.quizManager && this.game.quizManager.isBranchQuizCompleted(branchEndingHere);
+                const hasBranchFlashcards = this.game.flashcardManager &&
+                    this.game.flashcardManager.getFlashcardsForBranch(branchEndingHere).length > 0;
+                if (quizDone) {
+                    // Branch completed (quiz done); allow growth even if fruit was already harvested
+                } else if (!hasFruit) {
+                    this.game.updateStatus('Complete this branch first: add leaves, then a flower, then fruit.');
+                    return;
+                } else if (hasBranchFlashcards) {
+                    this.game.updateStatus('Complete this branch first: harvest the fruit and finish its quiz, then you can expand.');
+                    return;
+                }
+            }
+        }
+
+        if (isTrunkTop && existingBranches.length === 0) {
+            return;
+        }
+        if (!isTrunkTop || existingBranches.length > 0) {
             const branchCount = 3 + Math.floor(Math.random() * 3);
             const newBranches = [];
             for (let i = 0; i < branchCount; i++) {
@@ -146,6 +176,51 @@ window.TreeManager = class TreeManager {
 
             this.game.searchManager.assignResultsToBranches(node, newBranches);
             this.game.updateStatus(`Grew ${branchCount} branches from node!`);
+            console.log("[TREE] Calling mint check after branch growth");
+            window.checkAndMintByBranches();
+
+
+            
+
+            // Local maturity tracking (frontend-only). Increment and auto-mint when reaching 100.
+            try {
+                const growthAmount = 5 * branchCount; // heuristic: 5 maturity per branch
+                this.game.tree.maturity = Math.min(100, (this.game.tree.maturity || 0) + growthAmount);
+                try { localStorage.setItem('bonsai_maturity', String(this.game.tree.maturity)); } catch(e){}
+                this.game.updateStatus(`Maturity: ${this.game.tree.maturity}%`);
+
+                if (this.game.tree.maturity >= 100 && !this.game.tree.minted) {
+                    this.game.tree.minted = true;
+                    try { localStorage.setItem('bonsai_minted', 'true'); } catch(e){}
+
+                    // Determine wallet and topic
+                    let wallet = null;
+                    try {
+                        const saved = localStorage.getItem('bonsai_user');
+                        if (saved) wallet = JSON.parse(saved).wallet_address;
+                    } catch(e){}
+
+                    let topic = 'BrainBonsai Credential';
+                    try {
+                        const g = localStorage.getItem('bonsai_garden');
+                        if (g) topic = JSON.parse(g).seed || topic;
+                    } catch(e){}
+
+                    if (wallet && window.mintNow) {
+                        window.mintNow(wallet, topic).then(res => {
+                            if (res && res.tx_hash) {
+                                this.game.updateStatus('Minted! Tx: ' + res.tx_hash);
+                            } else {
+                                this.game.updateStatus('Mint attempt finished — check console for details.');
+                            }
+                        });
+                    } else {
+                        this.game.updateStatus('Ready to mint — sign in to auto-mint.');
+                    }
+                }
+            } catch (e) {
+                console.warn('Local maturity update failed', e);
+            }
         }
     }
 
@@ -184,6 +259,10 @@ window.TreeManager = class TreeManager {
         const lastFiveBranches = this.game.tree.branches.slice(-5);
         this.game.searchManager.assignInitialResults(lastFiveBranches);
         this.game.updateStatus(`Grew ${branchCount} branches from trunk!`);
+        if (window.checkAndMintByBranches) {
+        window.checkAndMintByBranches();
+}
+
     }
 
     addBranchFromNode(startPoint) {

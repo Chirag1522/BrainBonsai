@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BonsaiBrain – Garden</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+
+  <style>
+  body {
+  margin: 0;
+  overflow: hidden;
+  background: #1e293b; /* Deep Navy theme */
+  font-family: 'Inter', sans-serif;
+}
+
+h1 {
+  position: absolute;
+  top: 10px;
+  width: 100%;
+  text-align: center;
+  color: #f8fafc;
+  font-size: 20px;
+  letter-spacing: 2px;
+  text-transform: lowercase; /* Matches "bonsaibrain" style */
+  z-index: 1000;
+}
+
+#newTreeBtn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: #6366f1; /* Purple theme from screenshot */
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  z-index: 1000;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+}
+  </style>
+</head>
+<body>
+
+<h1>🌱 Knowledge Garden</h1>
+<button id="newTreeBtn">＋ New Tree</button>
+
+<canvas id="gardenCanvas"></canvas>
+
+<script src="/static/js/garden.js"></script>
+</body>
+</html>
